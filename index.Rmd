@@ -1,10 +1,10 @@
 ---
-title: MCHT Property Stewards' Report
+title: Saguaro NP Managers' Report
 author: Schoodic Institute at Acadia National Park
 output: 
   html_document:
     css: email_alerts/www/css/style.css
-github_repo: https://kylelima21.github.io/MCHT_early_detection_system/
+github_repo: https://github.com/Kylelima21/Saguaro_managers_report
 ---
 
 
@@ -28,8 +28,8 @@ end <- format(today()-1, "%d %B %Y")
 
 
 ## Pull iNaturalist and eBird data
-# inat <- inat_recent("17", "week")
-# ebird <- ebird_recent("US-ME")
+inat <- inat_recent("2346", "week")
+ebird <- ebird_recent("US-AZ-019")
 
 
 ## Make a df with 'groups' to add to the data
@@ -42,65 +42,64 @@ end <- format(today()-1, "%d %B %Y")
 
 
 ## Combine the two data frames
-# final_data <- combine_citsci_data(
-#   inat %>%
-#     select(scientific.name, common.name, iconic.taxon.name, observed.on,
-#            place.guess, latitude, longitude, positional.accuracy, user.login,
-#            user.id, captive.cultivated, url, image.url, license, presv_name, polygonloc),
-#   ebird %>%
-#     select(scientific.name, common.name, iconic.taxon.name, count, observed.on,
-#            place.guess, latitude, longitude, checklist, url, presv_name, polygonloc),
-#   join = groups) %>%
-#   rename(preserve = presv_name)
+final_data <- combine_citsci_data(
+  inat %>%
+    select(scientific.name, common.name, iconic.taxon.name, observed.on,
+           place.guess, latitude, longitude, positional.accuracy, user.login,
+           user.id, captive.cultivated, url, image.url, license, district = UNIT_NAME, polygonloc),
+  ebird %>%
+    select(scientific.name, common.name, iconic.taxon.name, count, observed.on,
+           place.guess, latitude, longitude, checklist, url, district = UNIT_NAME, polygonloc)) %>%
+  filter(polygonloc == "park") %>% 
+  mutate(district = ifelse(district == "Saguaro National Park East", "RMD", ifelse(district == "Saguaro National Park West", "TMD", "error"))) %>%
+  select(-polygonloc)
 
 
 ## Run the summary function on the final data
 # watchlist_species(final_data, "email_alerts/outputs")
+sagu_watchlist(final_data, "email_alerts/outputs")
 
 
 ## Read in the outputs from the watchlist species functions and format for tables
 ## Removing buffer zone spp for rare and te species
-pests <- process_species("email_alerts/outputs/invasive_pestslist.csv")
-rare <- process_species("email_alerts/outputs/rare_specieslist.csv") %>%
-  filter(polygonloc == "preserve") %>%
-  select(-c(polygonloc))
-te <- process_species("email_alerts/outputs/te_specieslist.csv",
-                      extra_cols = "listing.status") %>%
-  filter(polygonloc == "preserve") %>%
-  select(-c(polygonloc))
+# pests <- process_species("email_alerts/outputs/invasive_pestslist.csv")
+# rare <- process_species("email_alerts/outputs/rare_specieslist.csv") %>%
+#   filter(polygonloc == "preserve") %>%
+#   select(-c(polygonloc))
+# te <- process_species("email_alerts/outputs/te_specieslist.csv",
+#                       extra_cols = "listing.status") %>%
+#   filter(polygonloc == "preserve") %>%
+#   select(-c(polygonloc))
 
 
 ## Add new records to the database
 records <- bind_rows(
-  if(nrow(read.csv("email_alerts/outputs/invasive_pestslist.csv")) > 0) {
-    read.csv("email_alerts/outputs/invasive_pestslist.csv")
+  if(nrow(read.csv("email_alerts/outputs/rmd_obs.csv")) > 0) {
+    read.csv("email_alerts/outputs/rmd_obs.csv")
   },
 
-  if(nrow(read.csv("email_alerts/outputs/rare_specieslist.csv")) > 0) {
-    read.csv("email_alerts/outputs/rare_specieslist.csv")
-  },
-
-  if(nrow(read.csv("email_alerts/outputs/te_specieslist.csv")) > 0) {
-    read.csv("email_alerts/outputs/te_specieslist.csv")
-  }
-)
+  if(nrow(read.csv("email_alerts/outputs/tmd_obs.csv")) > 0) {
+    read.csv("email_alerts/outputs/tmd_obs.csv")
+  })
 
 database <- bind_rows(read.csv("email_alerts/outputs/database_records.csv"),
                       records) %>%
-  arrange(desc(polygonloc), preserve, observed.on) %>%
+  arrange(district, observed.on) %>%
   write.csv(., "email_alerts/outputs/database_records.csv", row.names = F)
 
 
+## Clean obs for tables
+records2 <- records %>% 
+  mutate(link = paste0('<a href="', url, '">', "view observation", '</a>')) %>% #for DT
+  select(-url)
+
+
 ## Combine for map
-pestsmap <- read.csv("email_alerts/outputs/invasive_pestslist.csv") %>%
+rmdmap <- read.csv("email_alerts/outputs/rmd_obs.csv") %>%
   select(scientific.name, common.name, latitude, longitude, url)
-raremap <- read.csv("email_alerts/outputs/rare_specieslist.csv") %>%
-  filter(polygonloc == "preserve") %>%
+tmdmap <- read.csv("email_alerts/outputs/tmd_obs.csv") %>%
   select(scientific.name, common.name, latitude, longitude, url)
-temap <- read.csv("email_alerts/outputs/te_specieslist.csv") %>%
-  filter(polygonloc == "preserve") %>%
-  select(scientific.name, common.name, latitude, longitude, url)
-mapcomb <- rbind(pestsmap, raremap, temap)
+mapcomb <- rbind(rmdmap, tmdmap)
 
   
 ```
@@ -118,10 +117,10 @@ mapcomb <- rbind(pestsmap, raremap, temap)
   <div class = "title-text-box">
   <!-- Title -->
   <div class = "h1 header-text">
-  Saguaro National Park Managers' Report
+  Saguaro NP Managers' Report
   </div>
   <div class = "h2 header-text">
-  A citizen science early-detection tool
+  A citizen science observation summary
   </div>
   <!-- Intro paragraph -->
   <div class = "headerp"> 
@@ -152,23 +151,21 @@ mapcomb <- rbind(pestsmap, raremap, temap)
 </div>
 
 
-<!-- Invasive Species -->
+<!-- RMD Species -->
 <div class = "species-box">
   <div>
-  <h3 class = "boxtitles"> Invasive Species </h3>
+  <h3 class = "boxtitles"> RMD Species </h3>
   </div>
-  <img src = "email_alerts/www/img/hwa.jpeg" role = "img" aria-label = "A Hemlock tree infested with Hemlock Woolly Adelgid" class = "inv-img">
-  <h5 class = "cite"> © Jesse Wheeler </h5>
+  <img src = "email_alerts/www/img/Picture1.jpg" role = "img" aria-label = "A red, black, and pale yellow snake on rocky substrate" class = "rare-img">
   <div class = "sp-table shrink-table">
-```{r pests-table, results = 'asis', echo = FALSE}
-pesttab <- pests %>%
-  filter(polygonloc == "preserve") %>% 
-  select(-c(latitude, longitude, polygonloc))
+```{r rmd-table, results = 'asis', echo = FALSE}
+if (nrow(records2) > 0) {
+  rmdtab <- records2 %>%
+    filter(district == "RMD") %>% 
+    select(scientific.name, common.name, observed.on, link)
 
-if (nrow(pesttab) > 0) {
-  
   DT::datatable(
-    pesttab,
+    rmdtab,
     options = list(
       dom = 't',
       pageLength = -1,
@@ -176,110 +173,180 @@ if (nrow(pesttab) > 0) {
     rownames = FALSE,
     escape = FALSE,
     filter = "top",
-    colnames = c("Scientific Name", "Common Name", "Date Observed", "Preserve", "Link"))
+    colnames = c("Scientific Name", "Common Name", "Date Observed", "Link"))
 } else {
-  cat(HTML("<h3>There were no invasive species reported this week.</h3>"))
+  cat(HTML("<h3>There were no target species reported this week.</h3>"))
 }
 ```
   </div>
 </div>
+
+
+
+
+<!-- TMD Species -->
+<div class = "species-box">
+  <div>
+  <h3 class = "boxtitles"> TMD Species </h3>
+  </div>
+  <img src = "email_alerts/www/img/sunrisesaguaro.jpg" role = "img" aria-label = "Sunrise over a saguaro forest" class = "rare-img">
+  <div class = "sp-table shrink-table">
+```{r tmd-table, results = 'asis', echo = FALSE}
+if (nrow(records2) > 0) {
+  tmdtab <- records2 %>%
+    filter(district == "TMD") %>% 
+    select(scientific.name, common.name, observed.on, link)
+
+  DT::datatable(
+    tmdtab,
+    options = list(
+      dom = 't',
+      pageLength = -1,
+      autoWidth = TRUE),
+    rownames = FALSE,
+    escape = FALSE,
+    filter = "top",
+    colnames = c("Scientific Name", "Common Name", "Date Observed", "Link"))
+} else {
+  cat(HTML("<h3>There were no target species reported this week.</h3>"))
+}
+```
+  </div>
+</div>
+
+
+
+
+
+
+<!-- Invasive Species -->
+<!-- <div class = "species-box"> -->
+<!--   <div> -->
+<!--   <h3 class = "boxtitles"> Invasive Species </h3> -->
+<!--   </div> -->
+<!--   <img src = "email_alerts/www/img/hwa.jpeg" role = "img" aria-label = "A Hemlock tree infested with Hemlock Woolly Adelgid" class = "inv-img"> -->
+<!--   <h5 class = "cite"> © Jesse Wheeler </h5> -->
+<!--   <div class = "sp-table shrink-table"> -->
+<!-- ```{r pests-table, results = 'asis', echo = FALSE} -->
+<!-- pesttab <- pests %>% -->
+<!--   filter(polygonloc == "preserve") %>%  -->
+<!--   select(-c(latitude, longitude, polygonloc)) -->
+
+<!-- if (nrow(pesttab) > 0) { -->
+
+<!--   DT::datatable( -->
+<!--     pesttab, -->
+<!--     options = list( -->
+<!--       dom = 't', -->
+<!--       pageLength = -1, -->
+<!--       autoWidth = TRUE), -->
+<!--     rownames = FALSE, -->
+<!--     escape = FALSE, -->
+<!--     filter = "top", -->
+<!--     colnames = c("Scientific Name", "Common Name", "Date Observed", "Preserve", "Link")) -->
+<!-- } else { -->
+<!--   cat(HTML("<h3>There were no invasive species reported this week.</h3>")) -->
+<!-- } -->
+<!-- ``` -->
+<!--   </div> -->
+<!-- </div> -->
 
 
 <!-- Rare Species -->
-<div class = "species-box">
-  <div>
-  <h3 class = "boxtitles"> Rare Species </h3>
-  </div>
-  <img src = "email_alerts/www/img/notr.jpeg" role = "img" aria-label = "A flowering Nodding Trillium" class = "rare-img">
-  <h5 class = "cite cite-white"> © Andy Fyon </h5>
-  <div class = "sp-table shrink-table">
-```{r rare-table, results = 'asis', echo = FALSE}
-if (nrow(rare) > 0) {
-  raretab <- rare %>%
-    select(-c(latitude, longitude))
-  
-  DT::datatable(
-    raretab,
-    options = list(
-      dom = 't',
-      pageLength = -1,
-      autoWidth = TRUE),
-    rownames = FALSE,
-    escape = FALSE,
-    filter = "top",
-    colnames = c("Scientific Name", "Common Name", "Date Observed", "Preserve", "Link"))
-} else {
-  cat(HTML("<h3>There were no rare species reported this week.</h3>"))
-}
-```
-  </div>
-</div>
+<!-- <div class = "species-box"> -->
+<!--   <div> -->
+<!--   <h3 class = "boxtitles"> Rare Species </h3> -->
+<!--   </div> -->
+<!--   <img src = "email_alerts/www/img/notr.jpeg" role = "img" aria-label = "A flowering Nodding Trillium" class = "rare-img"> -->
+<!--   <h5 class = "cite cite-white"> © Andy Fyon </h5> -->
+<!--   <div class = "sp-table shrink-table"> -->
+<!-- ```{r rare-table, results = 'asis', echo = FALSE} -->
+<!-- if (nrow(rare) > 0) { -->
+<!--   raretab <- rare %>% -->
+<!--     select(-c(latitude, longitude)) -->
+
+<!--   DT::datatable( -->
+<!--     raretab, -->
+<!--     options = list( -->
+<!--       dom = 't', -->
+<!--       pageLength = -1, -->
+<!--       autoWidth = TRUE), -->
+<!--     rownames = FALSE, -->
+<!--     escape = FALSE, -->
+<!--     filter = "top", -->
+<!--     colnames = c("Scientific Name", "Common Name", "Date Observed", "Preserve", "Link")) -->
+<!-- } else { -->
+<!--   cat(HTML("<h3>There were no rare species reported this week.</h3>")) -->
+<!-- } -->
+<!-- ``` -->
+<!--   </div> -->
+<!-- </div> -->
 
 
 <!-- Threatened & Endangered Species -->
-<div class = "species-box">
-  <div>
-  <h3 class = "boxtitles"> Threatened & Endangered Species </h3>
-  </div>
-  <img src = "email_alerts/www/img/rekn.jpeg" role = "img" aria-label = "Two Red Knots in flight" class = "te-img">
-  <h5 class = "cite"> © Fyn Kynd </h5>
-  <div class = "sp-table shrink-table">
-```{r te-table, results = 'asis', echo = FALSE}
-if (nrow(te) > 0) {
-  tetab <- te %>%
-    select(-c(latitude, longitude)) %>% 
-    select(scientific.name:observed.on, listing.status, preserve, link)
-  
-  DT::datatable(
-    tetab,
-    options = list(
-      dom = 't',
-      pageLength = -1,
-      autoWidth = TRUE),
-    rownames = FALSE,
-    escape = FALSE,
-    filter = "top",
-    colnames = c("Scientific Name", "Common Name", "Date Observed", "Preserve", "Listing", "Link"))
-} else {
-  cat(HTML("<h3>There were no threatened or endangered species reported this week.</h3>"))
-}
-```
-  </div>
-</div>
+<!-- <div class = "species-box"> -->
+<!--   <div> -->
+<!--   <h3 class = "boxtitles"> Threatened & Endangered Species </h3> -->
+<!--   </div> -->
+<!--   <img src = "email_alerts/www/img/rekn.jpeg" role = "img" aria-label = "Two Red Knots in flight" class = "te-img"> -->
+<!--   <h5 class = "cite"> © Fyn Kynd </h5> -->
+<!--   <div class = "sp-table shrink-table"> -->
+<!-- ```{r te-table, results = 'asis', echo = FALSE} -->
+<!-- if (nrow(te) > 0) { -->
+<!--   tetab <- te %>% -->
+<!--     select(-c(latitude, longitude)) %>%  -->
+<!--     select(scientific.name:observed.on, listing.status, preserve, link) -->
+
+<!--   DT::datatable( -->
+<!--     tetab, -->
+<!--     options = list( -->
+<!--       dom = 't', -->
+<!--       pageLength = -1, -->
+<!--       autoWidth = TRUE), -->
+<!--     rownames = FALSE, -->
+<!--     escape = FALSE, -->
+<!--     filter = "top", -->
+<!--     colnames = c("Scientific Name", "Common Name", "Date Observed", "Preserve", "Listing", "Link")) -->
+<!-- } else { -->
+<!--   cat(HTML("<h3>There were no threatened or endangered species reported this week.</h3>")) -->
+<!-- } -->
+<!-- ``` -->
+<!--   </div> -->
+<!-- </div> -->
 
 
 <!-- Buffer Zone Species -->
-<div class = "species-box">
-  <div>
-  <h3 class = "boxtitles"> Buffer Zone Species </h3>
-  </div>
-  <img src = "email_alerts/www/img/bld.png" role = "img" aria-label = "American beech leaves with beech leaf disease" class = "inv-img">
-  <h5 class = "cite"> © Kyle Lima </h5>
-  <div class = "sp-table shrink-table">
-```{r buffer-table, results = 'asis', echo = FALSE}
-bufftab <- pests %>%
-  filter(polygonloc == "buffer") %>% 
-  filter(common.name != "rugosa rose") %>% 
-  select(-c(latitude, longitude, polygonloc))
+<!-- <div class = "species-box"> -->
+<!--   <div> -->
+<!--   <h3 class = "boxtitles"> Buffer Zone Species </h3> -->
+<!--   </div> -->
+<!--   <img src = "email_alerts/www/img/bld.png" role = "img" aria-label = "American beech leaves with beech leaf disease" class = "inv-img"> -->
+<!--   <h5 class = "cite"> © Kyle Lima </h5> -->
+<!--   <div class = "sp-table shrink-table"> -->
+<!-- ```{r buffer-table, results = 'asis', echo = FALSE} -->
+<!-- bufftab <- pests %>% -->
+<!--   filter(polygonloc == "buffer") %>%  -->
+<!--   filter(common.name != "rugosa rose") %>%  -->
+<!--   select(-c(latitude, longitude, polygonloc)) -->
 
-if (nrow(bufftab) > 0) {
-  
-  DT::datatable(
-    bufftab,
-    options = list(
-      dom = 't',
-      pageLength = -1,
-      autoWidth = TRUE),
-    rownames = FALSE,
-    escape = FALSE,
-    filter = "top",
-    colnames = c("Scientific Name", "Common Name", "Date Observed", "Preserve", "Link"))
-} else {
-  cat(HTML("<h3>There were no species reported from the buffer zone this week.</h3>"))
-}
-```
-  </div>
-</div>
+<!-- if (nrow(bufftab) > 0) { -->
+
+<!--   DT::datatable( -->
+<!--     bufftab, -->
+<!--     options = list( -->
+<!--       dom = 't', -->
+<!--       pageLength = -1, -->
+<!--       autoWidth = TRUE), -->
+<!--     rownames = FALSE, -->
+<!--     escape = FALSE, -->
+<!--     filter = "top", -->
+<!--     colnames = c("Scientific Name", "Common Name", "Date Observed", "Preserve", "Link")) -->
+<!-- } else { -->
+<!--   cat(HTML("<h3>There were no species reported from the buffer zone this week.</h3>")) -->
+<!-- } -->
+<!-- ``` -->
+<!--   </div> -->
+<!-- </div> -->
 
 
 <!-- Download -->
@@ -291,7 +358,7 @@ if (nrow(bufftab) > 0) {
 ``` {r echo = FALSE}
 read.csv("email_alerts/outputs/database_records.csv") %>%
   download_this(
-    output_name = "full_MCHT_watchlist_database",
+    output_name = "full_saguaro_watchlist_database",
     output_extension = ".xlsx",
     button_label = "Download park data",
     button_type = "success")
@@ -313,7 +380,7 @@ read.csv("email_alerts/outputs/database_records.csv") %>%
 </div>
 <div>
   <h2>ABOUT</h2>
-  <p><a href = "https://github.com/Kylelima21/MCHT_early_detection_system" target="_blank">Source code</a></p>
+  <p><a href = "https://github.com/Kylelima21/Saguaro_managers_report" target="_blank">Source code</a></p>
   <p><a href = "https://www.nps.gov/sagu/index.htm" target = "_blank">Visit Saguaro National Park</a></p>
   <p><a href = "https://friendsofsaguaro.org/" target = "_blank">Visit the Friends of Saguaro National Park website</a></p>
   <p><a href = "https://schoodicinstitute.org/" target = "_blank">Visit the Schoodic Institute website</a></p>

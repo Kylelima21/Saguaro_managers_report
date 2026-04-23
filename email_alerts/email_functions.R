@@ -40,7 +40,7 @@ require(shinyalert)
 #' @param timespan: The recent time span of interest. Options 
 #' are "week", "threedays", or "yesterday" as inputs for the "timespan" parameter.
 #' @param place_id: An iNaturalist place ID in quotes. For example, the place id for 
-#' Hancock County Maine would be "1647" as found in the place page url: 
+#' Hancock County, Maine, USA would be "1647" as found in the place page url: 
 #' https://www.inaturalist.org/observations?place_id=1647&subview=map
 #' @seealso None
 #' @export
@@ -174,7 +174,7 @@ inat_recent <- function(place_id, timespan) {
 #' @param ebird_loc: An eBird place name as a single string with components separated by hyphens. 
 #' For example, the Hancock County, Maine, USA is "US-ME-009". A full list of codes can be found 
 #' here: https://support.ebird.org/en/support/solutions/articles/48000838205-download-ebird-data
-#' #' @param parkname The quoted name of the national park/monument that you want to filter records by. Requires
+#' @param parkname The quoted name of the national park/monument that you want to filter records by. Requires
 #' name format to be exact. Find a list of the 427 park names at this link: https://rpubs.com/klima21/filternps.
 #' @export
 
@@ -238,12 +238,11 @@ ebird_recent <- function(ebird_loc) {
 #' @param join: Another data frame of taxonomic group common names for joining
 #' @export
 
-combine_citsci_data <- function(x, y, join) {
+combine_citsci_data <- function(x, y) {
   
   output <- bind_rows(x, y) %>% 
     mutate(common.name = tolower(common.name)) %>% 
-    left_join(., join, by = "iconic.taxon.name") %>% 
-    select(scientific.name, common.name, iconic.taxon.name, groups, everything()) %>%
+    select(scientific.name, common.name, iconic.taxon.name, everything()) %>%
     mutate(common.name = ifelse(common.name == "", scientific.name, common.name)) %>% 
     arrange(common.name)
   
@@ -266,7 +265,6 @@ combine_citsci_data <- function(x, y, join) {
 #' the specified park/monument. Some column names may change.
 #'
 #' @example
-#'
 #' # Read in data from working directory
 #' bird.dat <- read.csv("ebird_mappingloc_20220217.csv")
 #'
@@ -281,7 +279,7 @@ filter_to_geobounds <- function(dat, lat, long) {
   sf::sf_use_s2(FALSE)
   
   
-  geo.bounds <- sf::read_sf("email_alerts/www/MCHT_shapefiles/MCHT_Fee_Preserves-polygon.shp") %>%
+  geo.bounds <- sf::read_sf("email_alerts/www/sagu_boundary/SAGU_ParkBounds.shp") %>%
     st_transform(4326)
   
   
@@ -292,16 +290,10 @@ filter_to_geobounds <- function(dat, lat, long) {
     sf::st_as_sf(., coords = c("x","y"), crs = sf::st_crs(geo.bounds))
   
   
-  dat2 %>% 
-    mutate(intersect = as.integer(st_intersects(geometry, geo.bounds))) %>% 
-    filter(!is.na(intersect))
-  
-  
   output <- sf::st_join(dat2, geo.bounds, left = F) %>% 
     st_set_geometry(., NULL) %>% 
-    select(-c(created_da, created_us, date_rec)) %>% 
     select(everything(), latitude = latitude.keep, longitude = longitude.keep) %>% 
-    mutate(polygonloc = "preserve")
+    mutate(polygonloc = "park")
     
   
   return(output)
@@ -331,7 +323,6 @@ filter_to_geobounds <- function(dat, lat, long) {
 #' the specified park/monument. Some column names may change.
 #'
 #' @example
-#'
 #' # Read in data from working directory
 #' bird.dat <- read.csv("ebird_mappingloc_20220217.csv")
 #'
@@ -346,7 +337,7 @@ filter_to_buffer <- function(dat, lat, long) {
   sf::sf_use_s2(FALSE)
   
   
-  geo.bounds <- sf::read_sf("email_alerts/www/MCHT_shapefiles/MCHT_Fee_Preserves-polygon.shp") %>%
+  geo.bounds <- sf::read_sf("email_alerts/www/sagu_boundary/SAGU_ParkBounds.shp") %>%
     st_transform(3857)
   
   geo.bounds_buffer <- st_buffer(geo.bounds, dist = 4828.032) ## 3 miles
@@ -364,7 +355,6 @@ filter_to_buffer <- function(dat, lat, long) {
   
   output <- sf::st_join(dat2, geo.bounds_buffer_only, left = F) %>% 
     st_set_geometry(., NULL) %>% 
-    select(-c(created_da, created_us, date_rec)) %>% 
     select(everything(), latitude = latitude.keep, longitude = longitude.keep) %>% 
     mutate(polygonloc = "buffer")
   
@@ -596,44 +586,7 @@ watchlist_species <- function(x, output.path) {
 
 
 
-
-
-
-
-#' Read in the outputs from the watchlist + new npspecies functions and format for tables
-process_species <- function(file, extra_cols = NULL) {
-  df <- read.csv(file) %>%
-    select(scientific.name, common.name, observed.on, latitude, longitude, url, preserve, polygonloc, all_of(extra_cols)) %>%
-    # mutate(link = glue::glue("[view observation]({url})"),
-    #        link = map(link, gt::md)) %>% #for kbl
-    mutate(link = paste0('<a href="', url, '">', "view observation", '</a>')) %>% #for DT
-    select(-url) %>%
-    arrange(common.name, observed.on)
-  return(df)
-}
-
-
-
-
-
-
-
-#' Function summarizes any new species observed within the designated area.
-#'
-#' This function takes a data frame of observations, path to the species list,
-#' and the path for the outputs. It creates a CSV file of all the species in 
-#' the data frame that have not been recorded in the park before. The results are
-#' written out to the provided directory.
-#'
-#' @inheritParams None
-#' @return A data frame of species not yet recorded in the designated area.
-#' @param x: Data frame of citizen science observations.
-#' @param species.list.path The path to your created species list for the designated area.
-#' @param output.path: The path you want the summary CSV to be written to.
-#' @seealso None
-#' @export
-
-new_npspecies <- function(x, output.path) {
+sagu_watchlist <- function(x, output.path) {
   
   ## Check to make sure that parameter inputs are correct
   # output.path
@@ -642,25 +595,57 @@ new_npspecies <- function(x, output.path) {
   }
   
   
-  # Get the full species list
-  park_sp_list <- read.csv("email_alerts/www/datasets/acad_species_list.csv")
+  # Stop this output from showing
+  options(readr.show_col_types = FALSE)
   
   
-  # New species according to the NPSpecies list
-  new_species <- x %>% 
-    filter(scientific.name %in% park_sp_list$scientific.name) %>% 
-    arrange(desc(observed.on)) %>% 
-    # group_by(scientific.name) %>% 
-    # slice(1) %>% 
-    #mutate(link = paste("<a href=", url, " target='_blank'>view record here</a>")) %>% 
-    dplyr::select(scientific.name, common.name, location = place.guess, 
-                  observed.on, latitude, longitude, url)
+  # Custom name repair function to be used later
+  custom_name_repair <- function(x) { tolower(gsub(" ", ".", x)) }
   
   
-  write.csv(new_species, paste(output.path, "new_species.csv", sep = "/"), row.names = F)
   
+  ## Read in watchlist
+  listsp <- read_excel("email_alerts/www/datasets/sagu_watchlist_species.xlsx", .name_repair = custom_name_repair) 
+  
+  
+  
+  ## Filter to watchlist spp observations
+  wlobs <- x %>% 
+    filter(scientific.name %in% listsp$scientific.name)
+  
+  
+  ## Separate districts and export
+  # RMD (Saguaro East)
+  rmd_obs <- wlobs %>% 
+    filter(district == "RMD")
+  
+  # TMD (Saguaro West)
+  tmd_obs <- wlobs %>% 
+    filter(district == "TMD")
+  
+  # Export
+  write.csv(rmd_obs, paste(output.path, "rmd_obs.csv", sep = "/"), row.names = F)
+  write.csv(tmd_obs, paste(output.path, "tmd_obs.csv", sep = "/"), row.names = F)
   
 }
+
+
+
+
+
+
+
+#' Read in the outputs from the watchlist + new npspecies functions and format for tables
+process_species <- function(file, extra_cols = NULL) {
+  df <- read.csv(file) %>%
+    select(scientific.name, common.name, observed.on, latitude, longitude, url, district, all_of(extra_cols)) %>%
+    mutate(link = paste0('<a href="', url, '">', "view observation", '</a>')) %>% #for DT
+    select(-url) %>%
+    arrange(common.name, observed.on)
+  return(df)
+}
+
+
 
 
 
@@ -745,7 +730,7 @@ leaflet_summary <- function (x) {
     minLong = min(formap$longitude) - 0.1
     minLat = min(formap$latitude) - 0.1
     
-    mcht <- sf::read_sf("email_alerts/www/MCHT_shapefiles/MCHT_Fee_Preserves-polygon.shp") %>%
+    mcht <- sf::read_sf("email_alerts/www/sagu_boundary/SAGU_ParkBounds.shp") %>%
       st_transform(4326)
     
     map <- leaflet(mcht, options = leafletOptions(zoomControl = FALSE)) %>% 
@@ -766,182 +751,5 @@ leaflet_summary <- function (x) {
 }
 
 
-
-#' Function summarizes iNaturalist observations for watchlist species
-#'
-#' Threatened and endangered species (state and federal)
-#'
-#' @inheritParams None
-#' @return A data frame of filtered iNaturalist observations.
-#' @param x: Data frame of iNaturalist observations.
-#' @seealso None
-#' @export
-
-watchlist_te <- function(x) {
-  
-  # Stop this output from showing
-  options(readr.show_col_types = FALSE)
-  
-  
-  # Custom name repair function to be used later
-  custom_name_repair <- function(x) { tolower(gsub(" ", ".", x)) }
-  
-  
-  ### THREATENED/ENDANGERED
-  ## Federal
-  # Read in the file and filter for the T, E, and SC species
-  fed_te_sp <- read_csv("email_alerts/www/datasets/federal_list_maine.csv") %>% 
-    rename_with(tolower, everything()) %>% 
-    select(scientific.name = "scientific name", common.name = "common name",
-           listing.status = "esa listing status") %>% 
-    mutate(level = "federal",
-           listing.status = tolower(listing.status),
-           listing.status = paste0("federally ", listing.status)) %>% 
-    dplyr::select(-level)
-  
-  
-  ## State
-  # Read in the file and filter for the T, E, and SC species
-  state_te_sp <- read_csv("email_alerts/www/datasets/maine_thrt_end_list.csv") %>% 
-    mutate(level = "state",
-           listing.status = tolower(listing.status),
-           listing.status = paste0("state ", listing.status)) %>% 
-    dplyr::select(-level)
-  
-  
-  # All T, E species federal
-  te_specieslist_federal <- x %>% 
-    filter(scientific.name %in% fed_te_sp$scientific.name) %>% 
-    left_join(fed_te_sp, by = "scientific.name")
-  
-  
-  # All T, E species state
-  te_specieslist_state <- x %>% 
-    filter(scientific.name %in% state_te_sp$scientific.name) %>%
-    left_join(state_te_sp, by = "scientific.name")
-  
-  
-  # Combine and export
-  all_te_sp <- dplyr::bind_rows(te_specieslist_federal, te_specieslist_state) %>% 
-    rename(common.name = common.name.x) %>% 
-    select(-common.name.y) %>% 
-    as_tibble()
-  
-  
-  return(all_te_sp)
-  
-}
-
-
-
-
-#' Function summarizes iNaturalist observations for watchlist species
-#'
-#' Rare or declining native species
-#'
-#' @inheritParams None
-#' @return A data frame of filtered iNaturalist observations.
-#' @param x: Data frame of iNaturalist observations.
-#' @seealso None
-#' @export
-
-watchlist_rn <- function(x) {
-  
-  # Stop this output from showing
-  options(readr.show_col_types = FALSE)
-  
-  
-  # Custom name repair function to be used later
-  custom_name_repair <- function(x) { tolower(gsub(" ", ".", x)) }
-  
-  
-  ## RARE
-  # Rare native species list
-  listsp <- read_excel("email_alerts/www/datasets/mcht_watchlist_species.xlsx", .name_repair = custom_name_repair) 
-  
-  rares <- listsp %>% 
-    filter(status == "rare native" | status == "insect")
-  
-  
-  # Native but rare
-  rares_obs <- x %>% 
-    filter(scientific.name %in% rares$scientific.name) %>% 
-    mutate(listing.status = "rare native") %>% 
-    as_tibble()
-  
-  
-  return(rares_obs)
-  
-}
-
-
-
-
-
-#' Function summarizes iNaturalist observations for watchlist species
-#'
-#' Invasives, pests, and diseases
-#'
-#' @inheritParams None
-#' @return A data frame of filtered iNaturalist observations.
-#' @param x: Data frame of iNaturalist observations.
-#' @seealso None
-#' @export
-
-watchlist_inv <- function(x) {
-  
-  # Stop this output from showing
-  options(readr.show_col_types = FALSE)
-  
-  
-  # Custom name repair function to be used later
-  custom_name_repair <- function(x) { tolower(gsub(" ", ".", x)) }
-  
-  
-  ## INVASIVE, PESTS
-  # Rare native species list
-  listsp <- read_excel("email_alerts/www/datasets/mcht_watchlist_species.xlsx", .name_repair = custom_name_repair) 
-  
-  invasive_ne <- listsp %>% 
-    filter(status == "invasive not established" |
-             status == "invasive established" |
-             status == "pest disease")
-  
-  
-  # Invasives and pests
-  invasive_obs <- x %>% 
-    filter(scientific.name %in% invasive_ne$scientific.name) %>% 
-    mutate(listing.status = "invasive/pest/disease") %>% 
-    as_tibble()
-  
-  
-  return(invasive_obs)
-  
-}
-
-
-
-
-## Buffer zone stuff in development: ####
-# acad.bounds <- sf::read_sf("email_alerts/www/acad_boundary/ACAD_ParkBoundary_PY_202004.shp") %>% 
-#   st_transform(4326)
-
-# acad.bounds_union <- acad.bounds %>%
-#   st_union()
-# 
-# acad.bounds_union_proj <- acad.bounds_union %>%
-#   st_transform(32619)
-# 
-# distance_meters <- 10 * 1609.34 # 30 miles in meters
-# 
-# acad.bounds_enlarged_proj <- acad.bounds_union_proj %>%
-#   st_buffer(dist = distance_meters)
-# 
-# acad.bounds_enlarged_wgs84 <- acad.bounds_enlarged_proj %>%
-#   st_transform(4326)
-# 
-# plot(st_geometry(acad.bounds_enlarged_wgs84), col = "lightblue", main = "Enlarged Park Boundary")
-# plot(st_geometry(acad.bounds_union), add = TRUE, col = "red", border = "red", lwd = 2)
-#   
 
 
